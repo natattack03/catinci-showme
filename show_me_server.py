@@ -20,7 +20,6 @@ Everything is intentionally minimal and kid-safe.
 
 import os
 import re
-from datetime import datetime
 from urllib.parse import urlencode
 
 from flask import Flask, request, jsonify
@@ -54,12 +53,11 @@ else:
     print("⚠️ WARNING: GEMINI_API_KEY not set.")
 
 # In-memory user state:
-# SESSIONS[user_id] = {
+# SESSIONS[parent_phone] = {
 #   "current_topic": "...",
 #   "image_query": "...",
 #   "video_query": "...",
-#   "last_question": "...",
-#   "updated_at": <datetime>
+#   "last_question": "..."
 # }
 SESSIONS = {}
 
@@ -250,15 +248,22 @@ def answer():
     """
     JSON:
     {
-      "user_id": "...",
+      "parent_phone": "+1555....",
       "text": "Why do whales have belly buttons?"
     }
     """
     data = request.get_json(force=True) or {}
-    user_id = data.get("user_id", "anonymous")
     text = (data.get("text") or "").strip()
+    parent_phone = (data.get("parent_phone") or "").strip()
 
-    print(f"🧒 /answer from {user_id}: {text}")
+    if not parent_phone:
+        return jsonify({
+            "spoken": "I need your grown-up's phone number so I know who to send the pictures to!"
+        }), 200
+
+    print(f"🧒 /answer for {parent_phone}: {text}")
+    session_key = parent_phone
+    session = SESSIONS.get(session_key, {})
 
     # If user's question *is a show request* ("can you show me whales?")
     forced_topic = extract_topic_from_utterance(text)
@@ -268,17 +273,16 @@ def answer():
         spoken, topic, image_q, video_q = parse_llm_output(raw)
 
         # fallback logic
-        topic = topic or forced_topic or text[:50]
-        image_q = ensure_kid_friendly_image_query(image_q or topic)
-        video_q = ensure_kid_friendly_video_query(video_q or f"{topic} videos")
+        topic = topic or forced_topic or session.get("current_topic") or text[:50]
+        image_q = ensure_kid_friendly_image_query(image_q or session.get("image_query") or topic)
+        video_q = ensure_kid_friendly_video_query(video_q or session.get("video_query") or f"{topic} videos")
 
         # store session state
-        SESSIONS[user_id] = {
+        SESSIONS[session_key] = {
             "current_topic": topic,
             "image_query": image_q,
             "video_query": video_q,
             "last_question": text,
-            "updated_at": datetime.utcnow(),
         }
 
         return jsonify({
@@ -302,22 +306,26 @@ def show_me():
     """
     JSON:
     {
-       "user_id": "...",
-       "text": "can you show us?",
-       "parent_phone": "+1555...."
+       "parent_phone": "+1555....",
+       "text": "can you show us?"
     }
     """
     data = request.get_json(force=True) or {}
-    user_id = data.get("user_id", "anonymous")
     text = (data.get("text") or "").strip()
     parent_phone = (data.get("parent_phone") or "").strip()
 
-    print(f"📸 /show_me from {user_id}: {text}")
+    if not parent_phone:
+        return jsonify({
+            "spoken": "I need your grown-up's phone number so I know who to send the pictures to!"
+        }), 200
+
+    print(f"📸 /show_me for {parent_phone}: {text}")
 
     if not is_show_request(text):
         return jsonify({"spoken": "If you'd like pictures or videos, just say 'show us'!"})
 
-    session = SESSIONS.get(user_id, {})
+    session_key = parent_phone
+    session = SESSIONS.get(session_key, {})
 
     # detect if user said "show me whales" directly
     utter_topic = extract_topic_from_utterance(text)
@@ -336,17 +344,14 @@ def show_me():
     video_url = youtube_url(video_q)
 
     # send SMS
-    if parent_phone:
-        emoji = "🌋" if "volcano" in topic.lower() else "🌟"
-        sms = (
-            f"Here are kid-friendly pictures and videos about {topic}!\n"
-            f"Images: {image_url}\n\n"
-            f"Videos: {video_url}\n\n"
-            "- Catinci AI 🌟"
-        )
-        send_sms(parent_phone, sms)
-    else:
-        print("⚠️ No parent_phone provided; skipping SMS.")
+    emoji = "🌋" if "volcano" in topic.lower() else "🌟"
+    sms = (
+        f"Here are kid-friendly pictures and videos about {topic}! {emoji}\n"
+        f"Images: {image_url}\n\n"
+        f"Videos: {video_url}\n\n"
+        "- Catinci AI 🌟"
+    )
+    send_sms(parent_phone, sms)
 
     spoken = (
         f"Sure! I found kid-friendly pictures and videos about {topic}. "
