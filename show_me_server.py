@@ -2,7 +2,7 @@
 show_me_server.py — Catinci "Show Me" Tool Endpoint
 ---------------------------------------------------
 Implements:
-  - /show_me : stores the agent's spoken answer as the topic and sends SMS
+  - /show_me : stores the child's last request as the topic and sends SMS
 
 The voice agent will:
   - read back `spoken` from /show_me
@@ -16,7 +16,6 @@ Everything is intentionally minimal and kid-safe.
 """
 
 import os
-import re
 from urllib.parse import quote
 
 from flask import Flask, request, jsonify
@@ -42,9 +41,9 @@ TWILIO_FROM = os.getenv("TWILIO_FROM")
 
 # In-memory user state:
 # SESSIONS = {
-#   "+15551234567": {
-#       "topic": "the full spoken answer the agent said last"
-#   }
+#    "+15551234567": {
+#        "topic": "last user question or statement"
+#    }
 # }
 SESSIONS = {}
 
@@ -52,25 +51,6 @@ SESSIONS = {}
 # -------------------------------------------------------------------
 # Helper functions
 # -------------------------------------------------------------------
-
-SHOW_TRIGGERS = [
-    r"\bshow me\b",
-    r"\bshow us\b",
-    r"\bcan you show\b",
-    r"\blet me see\b",
-    r"\blet us see\b",
-    r"\bsend (me|us) pictures\b",
-    r"\bwhat does that look like\b",
-]
-
-
-def is_show_request(text: str) -> bool:
-    """Detects if user says something like 'show us' / 'show me'."""
-    if not text:
-        return False
-    t = text.lower()
-    return any(re.search(p, t) for p in SHOW_TRIGGERS)
-
 
 def send_sms(to_number: str, message: str):
     """Send SMS via Twilio (or print if not configured)."""
@@ -98,18 +78,14 @@ def show_me():
     """
     JSON:
     {
-       "parent_phone": "+1555....",
         "text": "can you show us?",
-        "agent_spoken": "<agent response>"
+        "parent_phone": "+1555...."
     }
     """
     data = request.get_json(force=True) or {}
-    parent_phone = (data.get("parent_phone") or "").strip()
     raw_text = (data.get("text") or "").strip()
     text = raw_text.lower()
-    agent_spoken = data.get("agent_spoken")
-    if isinstance(agent_spoken, str):
-        agent_spoken = agent_spoken.strip()
+    parent_phone = (data.get("parent_phone") or "").strip()
 
     if not parent_phone:
         return jsonify({
@@ -121,15 +97,18 @@ def show_me():
 
     print(f"📸 /show_me for {session_key}: {raw_text}")
 
-    if not is_show_request(text):
-        if agent_spoken:
-            SESSIONS[session_key] = {"topic": agent_spoken}
+    show_me_triggered = any(
+        key in text for key in ["show me", "show us", "can you show", "please show"]
+    )
+
+    if not show_me_triggered:
+        SESSIONS[session_key] = {"topic": data.get("text", "")}
         return jsonify({"spoken": None}), 200
 
     topic = session.get("topic")
     if not topic:
         return jsonify({
-            "spoken": "Can you ask me something first so I know what to show you?"
+            "spoken": "Ask me something first so I know what to show!"
         }), 200
 
     image_url = "https://www.google.com/search?tbm=isch&q=" + quote(f"{topic} for kids")
