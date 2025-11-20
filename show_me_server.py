@@ -49,24 +49,26 @@ SESSIONS = {}
 
 
 # -------------------------------------------------------------------
-# Helper functions
+# Helper constants
 # -------------------------------------------------------------------
 
-def send_sms(to_number: str, message: str):
-    """Send SMS via Twilio (or print if not configured)."""
-    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
-        print("⚠️ Twilio not configured. Would send to:", to_number)
-        print("--- SMS BODY ---")
-        print(message)
-        print("---------------")
-        return
-
-    client = Client(TWILIO_SID, TWILIO_TOKEN)
-    client.messages.create(
-        to=to_number,
-        from_=TWILIO_FROM,
-        body=message,
-    )
+SHOW_ME_PHRASES = [
+    "show me",
+    "show us",
+    "can you show",
+    "can u show",
+    "please show",
+    "show it",
+    "i want to see",
+    "let me see",
+    "i wanna see",
+    "can i see",
+    "show the pictures",
+    "show the picture",
+    "show the video",
+    "show me the pictures",
+    "show me the video",
+]
 
 
 # -------------------------------------------------------------------
@@ -97,33 +99,44 @@ def show_me():
 
     print(f"📸 /show_me for {session_key}: {raw_text}")
 
-    show_me_triggered = any(
-        key in text for key in ["show me", "show us", "can you show", "please show"]
-    )
+    show_me_triggered = any(phrase in text for phrase in SHOW_ME_PHRASES)
 
     if not show_me_triggered:
         SESSIONS[session_key] = {"topic": data.get("text", "")}
         return jsonify({"spoken": None}), 200
 
-    topic = session.get("topic")
+    topic = session.get("topic", "").strip()
     if not topic:
         return jsonify({
             "spoken": "Ask me something first so I know what to show!"
         }), 200
 
+    quoted_topic = f"\"{topic}\""
     image_url = "https://www.google.com/search?tbm=isch&q=" + quote(f"{topic} for kids")
     video_url = "https://www.youtube.com/results?search_query=" + quote(f"{topic} for kids video")
 
     sms_body = (
-        f"Here are kid-friendly pictures and videos about {topic}! 🌟\n\n"
-        f"Images:\n{image_url}\n\n"
-        f"Videos:\n{video_url}\n\n"
-        f"- Catinci AI 🐾"
+        f"📸 Here are kid-friendly pictures and videos about {quoted_topic}!\n\n"
+        f"🖼️ Images:\n{image_url}\n\n"
+        f"🎥 Videos:\n{video_url}\n\n"
+        f"— Catinci AI 🐾"
     )
-    send_sms(parent_phone, sms_body)
+
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
+        print("⚠️ Twilio not configured. Would send to:", parent_phone)
+        print("--- SMS BODY ---")
+        print(sms_body)
+        print("---------------")
+    else:
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        client.messages.create(
+            to=parent_phone,
+            from_=TWILIO_FROM,
+            body=sms_body,
+        )
 
     return jsonify({
-        "spoken": f"I sent pictures and videos about {topic} to your grown-up!"
+        "spoken": f"I sent pictures and videos about {quoted_topic} to your grown-up!"
     }), 200
 
 
