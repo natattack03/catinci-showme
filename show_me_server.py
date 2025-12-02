@@ -52,39 +52,6 @@ SESSIONS = {}
 # Helper constants
 # -------------------------------------------------------------------
 
-SHOW_ME_PHRASES = [
-    "show me",
-    "show us",
-    "can you show",
-    "can u show",
-    "please show",
-    "show it",
-    "can i see",
-    "can we see",
-    "i want to see",
-    "i wanna see",
-    "let me see",
-    "show the pictures",
-    "show the picture",
-    "show the video",
-    "show me the pictures",
-    "show me the video",
-]
-
-# Phrases like "yes", "yes please", "okay" should NOT become the topic
-ACK_PHRASES = [
-    "yes",
-    "yes please",
-    "yeah",
-    "yep",
-    "ok",
-    "okay",
-    "sure",
-    "please",
-    "thanks",
-    "thank you",
-]
-
 # Very simple keyword filter to avoid obviously gory/scary queries.
 BLOCKED_KEYWORDS = [
     "graphic",
@@ -145,85 +112,51 @@ def show_me():
     """
     data = request.get_json(force=True) or {}
     text_raw = data.get("text", "") or ""
-    text = text_raw.strip()
-    lower_text = text.lower()
+    topic = text_raw.strip()
     parent_phone = (data.get("parent_phone") or "").strip()
 
     if not parent_phone:
         return jsonify({
-            "spoken": "I need your grown-up's phone number first!"
+            "spoken": "I couldn't find a phone number for your grown-up."
         }), 200
 
-    def is_ack_phrase(s: str) -> bool:
-        s = s.strip()
-        if not s:
-            return False
-        s_lower = s.lower()
-        for ack in ACK_PHRASES:
-            if s_lower == ack or s_lower.startswith(ack + " "):
-                return True
-        return False
-
-    show_me_triggered = any(phrase in lower_text for phrase in SHOW_ME_PHRASES)
-    ack_triggered = not show_me_triggered and is_ack_phrase(text)
-
-    session_key = parent_phone
-    session = SESSIONS.get(session_key, {})
-
-    print(f"📸 /show_me for {session_key}: {text_raw}")
-
-    if not show_me_triggered and not ack_triggered:
-        if text:
-            SESSIONS[session_key] = {"topic": text}
-        return jsonify({"spoken": None}), 200
-
-    if ack_triggered and not show_me_triggered:
-        return jsonify({"spoken": None}), 200
-
-    if show_me_triggered:
-        session = SESSIONS.get(session_key, {})
-        topic = session.get("topic", "").strip()
-        if not topic:
-            return jsonify({
-                "spoken": "Can you ask me something first so I know what to show you?"
-            }), 200
-
-        safe_topic = sanitize_topic_for_search(topic)
-        image_query = f"{safe_topic} explained for kids diagram cartoon"
-        video_query = f"{safe_topic} video for kids learning"
-
-        image_url = (
-            "https://www.google.com/search?tbm=isch&safe=active&q=" + quote(image_query)
-        )
-
-        video_url = (
-            "https://www.youtube.com/results?search_query=" + quote(video_query)
-        )
-
-        quoted_topic = f"\"{topic}\""
-
-        sms_body = (
-            f"📸 Here are kid-friendly pictures and videos about {quoted_topic}!\n\n"
-            f"🖼️ Images:\n{image_url}\n\n"
-            f"🎥 Videos:\n{video_url}\n\n"
-            f"— Catinci AI 🐾"
-        )
-
-        try:
-            client = Client(TWILIO_SID, TWILIO_TOKEN)
-            client.messages.create(
-                to=parent_phone,
-                from_=TWILIO_FROM,
-                body=sms_body,
-            )
-        except Exception as e:
-            print(f"[SHOW_ME] Twilio SMS error: {e}")
-
+    if not topic:
         return jsonify({
-            "spoken": f"I sent pictures and videos about {quoted_topic} to your grown-up!"
+            "spoken": "Can you tell me what you want to see first, little explorer?"
         }), 200
 
-    return jsonify({"spoken": None}), 200
+    safe_topic = sanitize_topic_for_search(topic)
+    image_query = f"{safe_topic} explained for kids diagram cartoon"
+    video_query = f"{safe_topic} video for kids learning"
+
+    image_url = (
+        "https://www.google.com/search?tbm=isch&safe=active&q=" + quote(image_query)
+    )
+    video_url = (
+        "https://www.youtube.com/results?search_query=" + quote(video_query)
+    )
+
+    quoted_topic = f"\"{topic}\""
+    sms_body = (
+        f"📸 Here are kid-friendly pictures and videos about {quoted_topic}!\n\n"
+        f"🖼️ Images:\n{image_url}\n\n"
+        f"🎥 Videos:\n{video_url}\n\n"
+        f"— Catinci AI 🐾"
+    )
+
+    try:
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        client.messages.create(
+            to=parent_phone,
+            from_=TWILIO_FROM,
+            body=sms_body,
+        )
+    except Exception as e:
+        print(f"[SHOW_ME] Twilio SMS error: {e}")
+
+    return jsonify({
+        "spoken": f"I sent pictures and videos about {quoted_topic} to your grown-up!"
+    }), 200
 
 
 # -------------------------------------------------------------------
