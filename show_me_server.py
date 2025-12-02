@@ -45,6 +45,7 @@ TWILIO_FROM = os.getenv("TWILIO_FROM")
 #        "topic": "last user question or statement"
 #    }
 # }
+# We keep this dict to reuse the last topic per parent when the child says "show me".
 SESSIONS = {}
 
 
@@ -103,27 +104,58 @@ def sanitize_topic_for_search(topic: str) -> str:
 
 @app.route("/show_me", methods=["POST"])
 def show_me():
-    """
-    JSON:
-    {
-        "text": "can you show us?",
-        "parent_phone": "+1555...."
-    }
-    """
     data = request.get_json(force=True) or {}
     text_raw = data.get("text", "") or ""
-    topic = text_raw.strip()
+    text = text_raw.strip()
+    lower_text = text.lower()
     parent_phone = (data.get("parent_phone") or "").strip()
+
+    SHOW_ME_PHRASES = [
+        "show me",
+        "show us",
+        "can you show",
+        "can u show",
+        "please show",
+        "show it",
+        "can i see",
+        "can we see",
+        "let me see",
+        "i want to see",
+        "i wanna see",
+        "show the pictures",
+        "show the picture",
+        "show the video",
+        "show me the pictures",
+        "show me the video",
+    ]
+
+    def is_show_me_like(s: str) -> bool:
+        s = s.strip().lower()
+        if not s:
+            return False
+        for phrase in SHOW_ME_PHRASES:
+            if phrase in s:
+                return True
+        return "show" in s and ("me" in s or "us" in s)
 
     if not parent_phone:
         return jsonify({
             "spoken": "I couldn't find a phone number for your grown-up."
         }), 200
 
-    if not topic:
+    if not text:
         return jsonify({
             "spoken": "Can you tell me what you want to see first, little explorer?"
         }), 200
+
+    session = SESSIONS.get(parent_phone, {})
+
+    if is_show_me_like(text):
+        topic = (session.get("topic") or text).strip()
+    else:
+        topic = text
+        if topic:
+            SESSIONS[parent_phone] = {"topic": topic}
 
     safe_topic = sanitize_topic_for_search(topic)
     image_query = f"{safe_topic} explained for kids diagram cartoon"
