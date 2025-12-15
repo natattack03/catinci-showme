@@ -53,6 +53,26 @@ SESSIONS = {}
 # Helper constants
 # -------------------------------------------------------------------
 
+# Phrases that trigger a "show me" send.
+SHOW_ME_PHRASES = [
+    "show me",
+    "show us",
+    "can you show",
+    "can u show",
+    "please show",
+    "show it",
+    "can i see",
+    "can we see",
+    "let me see",
+    "i want to see",
+    "i wanna see",
+    "show the pictures",
+    "show the picture",
+    "show the video",
+    "show me the pictures",
+    "show me the video",
+]
+
 # Very simple keyword filter to avoid obviously gory/scary queries.
 BLOCKED_KEYWORDS = [
     "graphic",
@@ -98,6 +118,17 @@ def sanitize_topic_for_search(topic: str) -> str:
     return safe_topic
 
 
+def is_show_me_like(s: str) -> bool:
+    """Detect common 'show me' style phrases."""
+    s = (s or "").strip().lower()
+    if not s:
+        return False
+    for phrase in SHOW_ME_PHRASES:
+        if phrase in s:
+            return True
+    return "show" in s and ("me" in s or "us" in s)
+
+
 # -------------------------------------------------------------------
 # /show_me — send SMS with direct links (NO landing page)
 # -------------------------------------------------------------------
@@ -107,36 +138,7 @@ def show_me():
     data = request.get_json(force=True) or {}
     text_raw = data.get("text", "") or ""
     text = text_raw.strip()
-    lower_text = text.lower()
     parent_phone = (data.get("parent_phone") or "").strip()
-
-    SHOW_ME_PHRASES = [
-        "show me",
-        "show us",
-        "can you show",
-        "can u show",
-        "please show",
-        "show it",
-        "can i see",
-        "can we see",
-        "let me see",
-        "i want to see",
-        "i wanna see",
-        "show the pictures",
-        "show the picture",
-        "show the video",
-        "show me the pictures",
-        "show me the video",
-    ]
-
-    def is_show_me_like(s: str) -> bool:
-        s = s.strip().lower()
-        if not s:
-            return False
-        for phrase in SHOW_ME_PHRASES:
-            if phrase in s:
-                return True
-        return "show" in s and ("me" in s or "us" in s)
 
     if not parent_phone:
         return jsonify({
@@ -151,11 +153,15 @@ def show_me():
     session = SESSIONS.get(parent_phone, {})
 
     if is_show_me_like(text):
-        topic = (session.get("topic") or text).strip()
+        topic = (session.get("topic") or "").strip()
+        if not topic:
+            return jsonify({
+                "spoken": "Can you tell me what you want to see first, little explorer?"
+            }), 200
     else:
         topic = text
-        if topic:
-            SESSIONS[parent_phone] = {"topic": topic}
+        SESSIONS[parent_phone] = {"topic": topic}
+        return jsonify({"spoken": None}), 200
 
     safe_topic = sanitize_topic_for_search(topic)
     image_query = f"{safe_topic} explained for kids diagram cartoon"
