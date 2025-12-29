@@ -30,7 +30,7 @@ Voice-first “show me” feature for the Catinci kid-friendly assistant. Kids a
 - If all words are removed, falls back to `science facts for kids`.
 ## Notes on voice-agent behavior
 - Local curl tests hit `/show_me` correctly and the stored topic/SMS flow works as expected.
-- In live voice-agent tests, the agent has occasionally hallucinated or rewrote the child’s request before calling the tool. Example: the child said “show me volcano pictures,” but the agent sent `text: "show me unicorn pictures"` to `/show_me`, so the parent received unicorn links. If you see this, log the raw payload the agent sends to the tool and tighten the agent prompt to pass the child’s exact words (and parent phone) without rewriting.
+- In live voice-agent tests, the agent has occasionally hallucinated or rewrote the child’s request before calling the tool. Example: the child said “show me volcano pictures,” but the agent sent `text: "show me unicorn pictures"` to `/show_me`, so the parent received unicorn links. Still trying to find a foolproof solution!!!!
 ## Environment
 Create a `.env` (or set env vars) with:
 - `TWILIO_SID`
